@@ -1,6 +1,18 @@
-# GMM Model Class for the GMM Learner I_Bayes_rule and Multi_Daft
+# Utilities for Learning with Finite Gaussian Mixture Models
 
-Repository for the Model GMM implementation which is used by i_Bayes_rule and Multi_Daft. 
+## What is this?
+This is a Tensorflow 2.0 implementation of some utilties for learning with Gaussian Mixture Models.
+
+![](./plots/gmm.png)
+
+## Getting Started
+Clone this repository and run
+```
+pip install . 
+```
+from the source directory.
+
+To check everything works fine, you can run the tests in ```./gmm_util/tests```.
 
 ## Notes
 This code is still in development and thus not thoroughly tested. Features may change in the future. It was tested with the packages listed in ```./setup.cfg```.

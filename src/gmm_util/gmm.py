@@ -1,8 +1,16 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from gmm_model.util import prec_to_prec_tril, prec_to_scale_tril, scale_tril_to_cov, sample_gmm, gmm_log_density_grad_hess, \
-    gmm_log_component_densities, gmm_log_density_and_log_component_densities, gmm_log_responsibilities
+from gmm_util.util import (
+    prec_to_prec_tril,
+    prec_to_scale_tril,
+    scale_tril_to_cov,
+    sample_gmm,
+    gmm_log_density_grad_hess,
+    gmm_log_component_densities,
+    gmm_log_density_and_log_component_densities,
+    gmm_log_responsibilities,
+)
 
 
 class GMM:
