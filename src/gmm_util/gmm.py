@@ -121,12 +121,12 @@ class GMM:
             log_density=log_dens,
         )
 
-    def sample_all_components(self, num_samples_per_component):
+    def sample_all_components(self, n_samples_per_component):
         """
         Draws num_samples_per_component from each Gaussian component of every GMM in this model.
         """
         # TODO: is this efficient?
         samples = tfp.distributions.MultivariateNormalTriL(
             loc=self.loc, scale_tril=self.scale_tril, validate_args=False
-        ).sample(num_samples_per_component)
+        ).sample(n_samples_per_component)
         return samples
