@@ -86,6 +86,25 @@ def cov_to_scale_tril(cov: tf.Tensor):
 
 
 @tf.function(
+    input_signature=[tf.TensorSpec(shape=[None, None, None, None], dtype=tf.float32)]
+)
+def cov_to_prec(cov: tf.Tensor):
+    # check input
+    # check input
+    if tf.executing_eagerly():
+        d_z = cov.shape[-1]
+        assert cov.shape[-2:] == (d_z, d_z)
+
+    # Compute precision matrix from covariance matrix
+    prec = tf.linalg.inv(cov)  # TODO: is there a better way?
+
+    # check output
+    if tf.executing_eagerly():
+        assert prec.shape[-2:] == (d_z, d_z)
+    return prec
+
+
+@tf.function(
     input_signature=[
         tf.TensorSpec(shape=None, dtype=tf.int32),
         tf.TensorSpec(shape=[None, None], dtype=tf.float32),
@@ -461,4 +480,3 @@ def gmm_log_density_hess(
     if tf.executing_eagerly():
         assert log_density_hess.shape == (n_samples,) + batch_shape + (d_z, d_z)
     return log_density_hess
-

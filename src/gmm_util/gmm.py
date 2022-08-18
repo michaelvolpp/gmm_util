@@ -5,6 +5,7 @@ from gmm_util.util import (
     prec_to_prec_tril,
     prec_to_scale_tril,
     scale_tril_to_cov,
+    cov_to_prec,
     sample_gmm,
     gmm_log_density_grad_hess,
     gmm_log_component_densities,
@@ -65,16 +66,20 @@ class GMM:
     @prec.setter
     def prec(self, value):
         self._prec.assign(value)
-        self._prec_tril.assign(prec_to_prec_tril(self._prec))
+        self._prec_tril.assign(prec_to_prec_tril(self.prec))
         self._scale_tril.assign(prec_to_scale_tril(self.prec))
         self._cov.assign(scale_tril_to_cov(self.scale_tril))
 
-    @prec_tril.setter
-    def prec_tril(self, value):
-        raise NotImplementedError
-
     @scale_tril.setter
     def scale_tril(self, value):
+        self._scale_tril.assign(value)
+        self._cov.assign(scale_tril_to_cov(self.scale_tril))
+        self._prec.assign(cov_to_prec(self.cov))
+        self._prec_tril.assing(prec_to_prec_tril(self.prec))
+
+
+    @prec_tril.setter
+    def prec_tril(self, value):
         raise NotImplementedError
 
     @cov.setter

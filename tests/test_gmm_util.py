@@ -6,6 +6,7 @@ from gmm_util.util import (
     prec_to_scale_tril,
     scale_tril_to_cov,
     cov_to_scale_tril,
+    cov_to_prec,
     sample_gmm,
     gmm_log_density,
     gmm_log_component_densities,
@@ -163,6 +164,60 @@ def test_scale_tril_to_cov():
     )
     cov = scale_tril_to_cov(scale_tril=scale_tril)
     assert tf.experimental.numpy.allclose(cov, true_cov)
+
+
+def test_cov_to_prec():
+    tf.config.run_functions_eagerly(True)
+
+    # check 1
+    cov = tf.constant(
+        [
+            [[2.0, 1.0], [6.0, 4.0]],
+            [[2.0, 1.0], [6.0, 4.0]],
+            [[2.0, 1.0], [6.0, 4.0]],
+        ]
+    )
+    true_prec = tf.constant(
+        [
+            [[2.0, -0.5], [-3.0, 1.0]],
+            [[2.0, -0.5], [-3.0, 1.0]],
+            [[2.0, -0.5], [-3.0, 1.0]],
+        ]
+    )
+    prec = cov_to_prec(cov=cov)
+    assert tf.experimental.numpy.allclose(prec, true_prec)
+
+    # check 2: with additional batch dim
+    cov = tf.constant(
+        [
+            [
+                [[2.0, 1.0], [6.0, 4.0]],
+                [[2.0, 1.0], [6.0, 4.0]],
+                [[2.0, 1.0], [6.0, 4.0]],
+            ],
+            [
+                [[2.0, 1.0], [6.0, 4.0]],
+                [[2.0, 1.0], [6.0, 4.0]],
+                [[2.0, 1.0], [6.0, 4.0]],
+            ],
+        ]
+    )
+    true_prec = tf.constant(
+        [
+            [
+                [[2.0, -0.5], [-3.0, 1.0]],
+                [[2.0, -0.5], [-3.0, 1.0]],
+                [[2.0, -0.5], [-3.0, 1.0]],
+            ],
+            [
+                [[2.0, -0.5], [-3.0, 1.0]],
+                [[2.0, -0.5], [-3.0, 1.0]],
+                [[2.0, -0.5], [-3.0, 1.0]],
+            ]
+        ]
+    )
+    prec = cov_to_prec(cov=cov)
+    assert tf.experimental.numpy.allclose(prec, true_prec)
 
 
 def test_cov_to_scale_tril():
