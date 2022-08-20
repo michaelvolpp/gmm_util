@@ -1,5 +1,6 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
+from typing import Optional
 
 from gmm_util.util import (
     prec_to_prec_tril,
@@ -15,20 +16,75 @@ from gmm_util.util import (
 
 
 class GMM:
-    def __init__(self, log_w: tf.Tensor, loc: tf.Tensor, prec: tf.Tensor):
+    def __init__(
+        self,
+        log_w: tf.Tensor,
+        loc: tf.Tensor,
+        prec: Optional[tf.Tensor] = None,
+        scale_tril: Optional[tf.Tensor] = None,
+    ):
         # check input
+        self.n_batch_dims = len(log_w.shape) - 1
         self.n_components = log_w.shape[-1]
         self.d_z = loc.shape[-1]
         assert log_w.shape[-1:] == (self.n_components,)
         assert loc.shape[-2:] == (self.n_components, self.d_z)
-        assert prec.shape[-3:] == (self.n_components, self.d_z, self.d_z)
+        if prec is not None:
+            assert scale_tril is None
+            assert prec.shape[-3:] == (self.n_components, self.d_z, self.d_z)
+        else:
+            assert scale_tril is not None
+            assert scale_tril.shape[-3:] == (self.n_components, self.d_z, self.d_z)
 
-        self._log_w = tf.Variable(tf.cast(log_w, dtype=tf.float32))
-        self._loc = tf.Variable(tf.cast(loc, dtype=tf.float32))
-        self._prec = tf.Variable(tf.cast(prec, dtype=tf.float32))
-        self._prec_tril = tf.Variable(prec_to_prec_tril(prec=self._prec))
-        self._scale_tril = tf.Variable(prec_to_scale_tril(prec=self._prec))
-        self._cov = tf.Variable(scale_tril_to_cov(self._scale_tril))
+        # create empty variables
+        self._log_w = tf.Variable(
+            shape=self.n_batch_dims * [None] + [self.n_components],
+            initial_value=tf.zeros(self.n_batch_dims * [0] + [self.n_components]),
+            dtype=tf.float32,
+        )
+        self._loc = tf.Variable(
+            shape=self.n_batch_dims * [None] + [self.n_components, self.d_z],
+            initial_value=tf.zeros(
+                self.n_batch_dims * [0] + [self.n_components, self.d_z]
+            ),
+            dtype=tf.float32,
+        )
+        self._prec = tf.Variable(
+            shape=self.n_batch_dims * [None] + [self.n_components, self.d_z, self.d_z],
+            initial_value=tf.zeros(
+                self.n_batch_dims * [0] + [self.n_components, self.d_z, self.d_z]
+            ),
+            dtype=tf.float32,
+        )
+        self._prec_tril = tf.Variable(
+            shape=self.n_batch_dims * [None] + [self.n_components, self.d_z, self.d_z],
+            initial_value=tf.zeros(
+                self.n_batch_dims * [0] + [self.n_components, self.d_z, self.d_z]
+            ),
+            dtype=tf.float32,
+        )
+        self._cov = tf.Variable(
+            shape=self.n_batch_dims * [None] + [self.n_components, self.d_z, self.d_z],
+            initial_value=tf.zeros(
+                self.n_batch_dims * [0] + [self.n_components, self.d_z, self.d_z]
+            ),
+            dtype=tf.float32,
+        )
+        self._scale_tril = tf.Variable(
+            shape=self.n_batch_dims * [None] + [self.n_components, self.d_z, self.d_z],
+            initial_value=tf.zeros(
+                self.n_batch_dims * [0] + [self.n_components, self.d_z, self.d_z]
+            ),
+            dtype=tf.float32,
+        )
+
+        # set variables
+        self.log_w = tf.cast(log_w, dtype=tf.float32)
+        self.loc = tf.cast(loc, dtype=tf.float32)
+        if prec is not None:
+            self.prec = tf.cast(prec, dtype=tf.float32)  # calls the setter
+        else:
+            self.scale_tril = tf.cast(scale_tril, dtype=tf.float32)  # calls the setter
 
     @property
     def loc(self):
@@ -55,6 +111,7 @@ class GMM:
         return self._cov
 
     # TODO: check consistency of shapes
+    # TODO: validate arguments
     @loc.setter
     def loc(self, value):
         self._loc.assign(value)
@@ -75,8 +132,7 @@ class GMM:
         self._scale_tril.assign(value)
         self._cov.assign(scale_tril_to_cov(self.scale_tril))
         self._prec.assign(cov_to_prec(self.cov))
-        self._prec_tril.assing(prec_to_prec_tril(self.prec))
-
+        self._prec_tril.assign(prec_to_prec_tril(self.prec))
 
     @prec_tril.setter
     def prec_tril(self, value):

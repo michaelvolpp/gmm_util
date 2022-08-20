@@ -13,7 +13,8 @@ from gmm_util.util import (
     gmm_log_responsibilities,
     gmm_log_density_grad_hess,
 )
-from .util_autograd import eval_fn_grad_hess
+from .util_to_test_autograd import eval_fn_grad_hess
+from gmm_util.gmm import GMM
 
 
 def test_prec_to_prec_tril():
@@ -213,7 +214,7 @@ def test_cov_to_prec():
                 [[2.0, -0.5], [-3.0, 1.0]],
                 [[2.0, -0.5], [-3.0, 1.0]],
                 [[2.0, -0.5], [-3.0, 1.0]],
-            ]
+            ],
         ]
     )
     prec = cov_to_prec(cov=cov)
@@ -1206,121 +1207,575 @@ def test_gmm_log_density_grad_hess():
     )
 
 
-# def test_sample_categorical():
-#     n_samples = 10
+def test_gmm():
+    tf.config.run_functions_eagerly(True)  # s.t. various batch dims are possible
 
-#     # one component
-#     log_w = tf.math.log([1.0])
-#     samples = sample_categorical(n_samples=n_samples, log_w=log_w)
-#     assert samples.shape == (n_samples,)
-#     assert tf.reduce_all(samples == 0)
+    ## (1) n_batch_dims = 0
+    # generate valid parameters
+    # set 1
+    log_w = tf.math.log(tf.constant([0.1, 0.3, 0.6]))
+    loc = tf.constant(
+        [
+            [3.0, 4.0],
+            [-1.0, 2.0],
+            [-7.0, -1.0],
+        ]
+    )
+    scale_tril = tf.constant(
+        [
+            [
+                [1.0, 0.0],
+                [-0.5, 0.1],
+            ],
+            [
+                [7.0, 0.0],
+                [1.0, 7.0],
+            ],
+            [
+                [0.2, 0.0],
+                [-9.0, 9.0],
+            ],
+        ]
+    )
+    cov = scale_tril_to_cov(scale_tril)
+    prec = cov_to_prec(cov)
+    prec_tril = prec_to_prec_tril(prec)
+    # set 2
+    log_w2 = tf.math.log(tf.constant([0.5, 0.1, 0.4]))
+    loc2 = tf.constant(
+        [
+            [1.0, 4.0],
+            [1.0, 2.0],
+            [-5.0, -1.0],
+        ]
+    )
+    scale_tril2 = tf.constant(
+        [
+            [
+                [2.0, 0.0],
+                [-0.5, 1.1],
+            ],
+            [
+                [1.0, 0.0],
+                [2.0, 9.0],
+            ],
+            [
+                [0.3, 0.0],
+                [-9.0, 9.0],
+            ],
+        ]
+    )
+    cov2 = scale_tril_to_cov(scale_tril2)
+    prec2 = cov_to_prec(cov2)
+    prec_tril2 = prec_to_prec_tril(prec2)
+    assert tf.experimental.numpy.allclose(tf.linalg.cholesky(cov2), scale_tril2)
+    assert tf.experimental.numpy.allclose(tf.linalg.inv(cov2), prec2)
+    assert tf.experimental.numpy.allclose(tf.linalg.cholesky(prec2), prec_tril2)
+    # (i) Initialize with precision
+    gmm = GMM(log_w=log_w, loc=loc, prec=prec)
+    assert gmm.n_batch_dims == 0
+    assert gmm.n_components == 3
+    assert gmm.d_z == 2
+    assert tf.experimental.numpy.allclose(gmm.log_w, log_w)
+    assert tf.experimental.numpy.allclose(gmm.prec, prec)
+    assert tf.experimental.numpy.allclose(gmm.cov, cov)
+    assert tf.experimental.numpy.allclose(gmm.prec_tril, prec_tril)
+    assert tf.experimental.numpy.allclose(gmm.scale_tril, scale_tril)
+    # (ii) Set new parameters (prec)
+    gmm.log_w = log_w2
+    gmm.loc = loc2
+    gmm.prec = prec2
+    assert gmm.n_batch_dims == 0
+    assert gmm.n_components == 3
+    assert gmm.d_z == 2
+    assert tf.experimental.numpy.allclose(gmm.log_w, log_w2)
+    assert tf.experimental.numpy.allclose(gmm.prec, prec2)
+    assert tf.experimental.numpy.allclose(gmm.cov, cov2)
+    assert tf.experimental.numpy.allclose(gmm.prec_tril, prec_tril2)
+    assert tf.experimental.numpy.allclose(gmm.scale_tril, scale_tril2)
+    # (iii) Set new parameters (scale_tril)
+    gmm.log_w = log_w
+    gmm.loc = loc
+    gmm.scale_tril = scale_tril
+    assert gmm.n_batch_dims == 0
+    assert gmm.n_components == 3
+    assert gmm.d_z == 2
+    assert tf.experimental.numpy.allclose(gmm.log_w, log_w)
+    assert tf.experimental.numpy.allclose(gmm.prec, prec)
+    assert tf.experimental.numpy.allclose(gmm.cov, cov)
+    assert tf.experimental.numpy.allclose(gmm.prec_tril, prec_tril)
+    assert tf.experimental.numpy.allclose(gmm.scale_tril, scale_tril)
+    # (iv) Initialize with scale_tril
+    gmm = GMM(log_w=log_w, loc=loc, scale_tril=scale_tril)
+    assert gmm.n_batch_dims == 0
+    assert gmm.n_components == 3
+    assert gmm.d_z == 2
+    assert tf.experimental.numpy.allclose(gmm.log_w, log_w)
+    assert tf.experimental.numpy.allclose(gmm.prec, prec)
+    assert tf.experimental.numpy.allclose(gmm.cov, cov)
+    assert tf.experimental.numpy.allclose(gmm.prec_tril, prec_tril)
+    assert tf.experimental.numpy.allclose(gmm.scale_tril, scale_tril)
+    # (v) call all methods (validity of results is confirmed by the other tests)
+    z = tf.random.normal((10, 2))
+    s = gmm.sample(n_samples=10)
+    assert s.shape == (10, 2)
+    ld, ldg, ldh = gmm.log_density(z=z, compute_grad=True, compute_hess=True)
+    assert ld.shape == (10,)
+    assert ldg.shape == (10, 2)
+    assert ldh.shape == (10, 2, 2)
+    lcd = gmm.log_component_densities(z=z)
+    assert lcd.shape == (10, 3)
+    lr = gmm.log_responsibilities(z=z)
+    assert lr.shape == (10, 3)
+    s = gmm.sample_all_components(n_samples_per_component=10)
+    assert s.shape == (10, 3, 2)
 
-#     log_w = tf.math.log([[1.0], [1.0]])
-#     samples = sample_categorical(n_samples=n_samples, log_w=log_w)
-#     assert samples.shape == (n_samples, 2)
-#     assert tf.reduce_all(samples == 0)
+    ## (2) n_batch_dims = 1
+    # generate valid parameters
+    # set 1
+    log_w = tf.math.log(tf.constant([[0.1, 0.3, 0.6], [0.1, 0.3, 0.6]]))
+    loc = tf.constant(
+        [
+            [
+                [3.0, 4.0],
+                [-1.0, 2.0],
+                [-7.0, -1.0],
+            ],
+            [
+                [3.0, 4.0],
+                [-1.0, 2.0],
+                [-7.0, -1.0],
+            ],
+        ]
+    )
+    scale_tril = tf.constant(
+        [
+            [
+                [
+                    [1.0, 0.0],
+                    [-0.5, 0.1],
+                ],
+                [
+                    [7.0, 0.0],
+                    [1.0, 7.0],
+                ],
+                [
+                    [0.2, 0.0],
+                    [-9.0, 9.0],
+                ],
+            ],
+            [
+                [
+                    [1.0, 0.0],
+                    [-0.5, 0.1],
+                ],
+                [
+                    [7.0, 0.0],
+                    [1.0, 7.0],
+                ],
+                [
+                    [0.2, 0.0],
+                    [-9.0, 9.0],
+                ],
+            ],
+        ]
+    )
+    cov = scale_tril_to_cov(scale_tril)
+    prec = cov_to_prec(cov)
+    prec_tril = prec_to_prec_tril(prec)
+    # set 2
+    log_w2 = tf.math.log(tf.constant([[0.5, 0.1, 0.4], [0.5, 0.1, 0.4]]))
+    loc2 = tf.constant(
+        [
+            [
+                [1.0, 4.0],
+                [1.0, 2.0],
+                [-5.0, -1.0],
+            ],
+            [
+                [1.0, 4.0],
+                [1.0, 2.0],
+                [-5.0, -1.0],
+            ],
+        ]
+    )
+    scale_tril2 = tf.constant(
+        [
+            [
+                [
+                    [2.0, 0.0],
+                    [-0.5, 1.1],
+                ],
+                [
+                    [1.0, 0.0],
+                    [2.0, 9.0],
+                ],
+                [
+                    [0.3, 0.0],
+                    [-9.0, 9.0],
+                ],
+            ],
+            [
+                [
+                    [2.0, 0.0],
+                    [-0.5, 1.1],
+                ],
+                [
+                    [1.0, 0.0],
+                    [2.0, 9.0],
+                ],
+                [
+                    [0.3, 0.0],
+                    [-9.0, 9.0],
+                ],
+            ],
+        ]
+    )
+    cov2 = scale_tril_to_cov(scale_tril2)
+    prec2 = cov_to_prec(cov2)
+    prec_tril2 = prec_to_prec_tril(prec2)
+    assert tf.experimental.numpy.allclose(tf.linalg.cholesky(cov2), scale_tril2)
+    assert tf.experimental.numpy.allclose(tf.linalg.inv(cov2), prec2)
+    assert tf.experimental.numpy.allclose(tf.linalg.cholesky(prec2), prec_tril2)
+    # (i) Initialize with precision
+    gmm = GMM(log_w=log_w, loc=loc, prec=prec)
+    assert gmm.n_batch_dims == 1
+    assert gmm.n_components == 3
+    assert gmm.d_z == 2
+    assert tf.experimental.numpy.allclose(gmm.log_w, log_w)
+    assert tf.experimental.numpy.allclose(gmm.prec, prec)
+    assert tf.experimental.numpy.allclose(gmm.cov, cov)
+    assert tf.experimental.numpy.allclose(gmm.prec_tril, prec_tril)
+    assert tf.experimental.numpy.allclose(gmm.scale_tril, scale_tril)
+    # (ii) Set new parameters (prec)
+    gmm.log_w = log_w2
+    gmm.loc = loc2
+    gmm.prec = prec2
+    assert gmm.n_batch_dims == 1
+    assert gmm.n_components == 3
+    assert gmm.d_z == 2
+    assert tf.experimental.numpy.allclose(gmm.log_w, log_w2)
+    assert tf.experimental.numpy.allclose(gmm.prec, prec2)
+    assert tf.experimental.numpy.allclose(gmm.cov, cov2)
+    assert tf.experimental.numpy.allclose(gmm.prec_tril, prec_tril2)
+    assert tf.experimental.numpy.allclose(gmm.scale_tril, scale_tril2)
+    # (iii) Set new parameters (scale_tril)
+    gmm.log_w = log_w
+    gmm.loc = loc
+    gmm.scale_tril = scale_tril
+    assert gmm.n_batch_dims == 1
+    assert gmm.n_components == 3
+    assert gmm.d_z == 2
+    assert tf.experimental.numpy.allclose(gmm.log_w, log_w)
+    assert tf.experimental.numpy.allclose(gmm.prec, prec)
+    assert tf.experimental.numpy.allclose(gmm.cov, cov)
+    assert tf.experimental.numpy.allclose(gmm.prec_tril, prec_tril)
+    assert tf.experimental.numpy.allclose(gmm.scale_tril, scale_tril)
+    # (iv) Initialize with scale_tril
+    gmm = GMM(log_w=log_w, loc=loc, scale_tril=scale_tril)
+    assert gmm.n_batch_dims == 1
+    assert gmm.n_components == 3
+    assert gmm.d_z == 2
+    assert tf.experimental.numpy.allclose(gmm.log_w, log_w)
+    assert tf.experimental.numpy.allclose(gmm.prec, prec)
+    assert tf.experimental.numpy.allclose(gmm.cov, cov)
+    assert tf.experimental.numpy.allclose(gmm.prec_tril, prec_tril)
+    assert tf.experimental.numpy.allclose(gmm.scale_tril, scale_tril)
+    # (v) call all methods (validity of results is confirmed by the other tests)
+    z = tf.random.normal((10, 2, 2))
+    s = gmm.sample(n_samples=10)
+    assert s.shape == (10, 2, 2)
+    ld, ldg, ldh = gmm.log_density(z=z, compute_grad=True, compute_hess=True)
+    assert ld.shape == (10, 2)
+    assert ldg.shape == (10, 2, 2)
+    assert ldh.shape == (10, 2, 2, 2)
+    lcd = gmm.log_component_densities(z=z)
+    assert lcd.shape == (10, 2, 3)
+    lr = gmm.log_responsibilities(z=z)
+    assert lr.shape == (10, 2, 3)
+    s = gmm.sample_all_components(n_samples_per_component=10)
+    assert s.shape == (10, 2, 3, 2)
 
-#     # two components
-#     log_w = tf.math.log([0.0, 1.0])
-#     samples = sample_categorical(n_samples=n_samples, log_w=log_w)
-#     assert samples.shape == (n_samples,)
-#     assert tf.reduce_all(samples == 1)
-
-#     log_w = tf.math.log([1.0, 0.0])
-#     samples = sample_categorical(n_samples=n_samples, log_w=log_w)
-#     assert samples.shape == (n_samples,)
-#     assert tf.reduce_all(samples == 0)
-
-#     log_w = tf.math.log([[0.0, 1.0], [1.0, 0.0]])
-#     samples = sample_categorical(n_samples=n_samples, log_w=log_w)
-#     assert samples.shape == (n_samples, 2)
-#     assert tf.reduce_all(samples[:, 0] == 1)
-#     assert tf.reduce_all(samples[:, 1] == 0)
-
-#     # three components
-#     log_w = tf.math.log([0.0, 1.0, 0.0])
-#     samples = sample_categorical(n_samples=n_samples, log_w=log_w)
-#     assert samples.shape == (n_samples,)
-#     assert tf.reduce_all(samples == 1)
-
-#     log_w = tf.math.log([0.0, 0.0, 1.0])
-#     samples = sample_categorical(n_samples=n_samples, log_w=log_w)
-#     assert samples.shape == (n_samples,)
-#     assert tf.reduce_all(samples == 2)
-
-#     log_w = tf.math.log([[0.0, 1.0, 0.0], [1.0, 0.0, 0.0]])
-#     samples = sample_categorical(n_samples=n_samples, log_w=log_w)
-#     assert samples.shape == (n_samples, 2)
-#     assert tf.reduce_all(samples[:, 0] == 1)
-#     assert tf.reduce_all(samples[:, 1] == 0)
-
-#     # many samples
-#     n_samples = 1000000
-#     log_w = tf.math.log([[0.1, 0.4, 0.5], [0.2, 0.3, 0.5]])
-#     samples = sample_categorical(n_samples=n_samples, log_w=log_w)
-#     assert samples.shape == (n_samples, 2)
-#     for i in range(log_w.shape[0]):
-#         for k in range(log_w.shape[1]):
-#             cur_ratio = tf.reduce_sum(tf.cast(samples[:, i] == k, tf.int32)) / n_samples
-#             assert tf.experimental.numpy.allclose(
-#                 cur_ratio, tf.exp(log_w[i, k]), atol=0.01, rtol=0.0
-#             )
-
-
-# def test_sample_gaussian():
-#     n_samples = 100000
-
-#     # check 1: d_z == 1
-#     d_z = 1
-#     loc = tf.constant([1.0])
-#     scale_tril = tf.constant([[0.1]])
-#     samples = sample_gaussian(
-#         n_samples=n_samples,
-#         loc=loc,
-#         scale_tril=scale_tril,
-#     )
-#     assert samples.shape == (n_samples, d_z)
-#     empirical_mean = tf.reduce_mean(samples, axis=0)
-#     empirical_std = tf.math.reduce_std(samples, axis=0)
-#     assert tf.experimental.numpy.allclose(empirical_mean, loc, atol=0.01, rtol=0.0)
-#     assert tf.experimental.numpy.allclose(
-#         empirical_std, scale_tril, atol=0.01, rtol=0.0
-#     )
-
-#     # check 2: d_z == 2
-#     d_z = 2
-#     loc = tf.constant([1.0, -1.0])
-#     scale_tril = tf.constant([[0.1, 0.0], [-2.0, 1.0]])
-#     cov = scale_tril_to_cov(scale_tril)
-#     samples = sample_gaussian(
-#         n_samples=n_samples,
-#         loc=loc,
-#         scale_tril=scale_tril,
-#     )
-#     assert samples.shape == (n_samples, d_z)
-#     empirical_mean = tf.reduce_mean(samples, axis=0)
-#     empirical_cov = tfp.stats.covariance(samples)
-#     assert tf.experimental.numpy.allclose(empirical_mean, loc, atol=0.01, rtol=0.0)
-#     assert tf.experimental.numpy.allclose(empirical_cov, cov, atol=0.05, rtol=0.0)
-
-#     # check 3: d_z == 2, batch_dim
-#     d_z = 2
-#     loc = tf.constant([[1.0, -1.0], [2.0, 3.0]])
-#     scale_tril = tf.constant([[[0.1, 0.0], [-2.0, 1.0]], [[2.0, 0.0], [-3.0, 1.0]]])
-#     cov = scale_tril_to_cov(scale_tril)
-#     samples = sample_gaussian(
-#         n_samples=n_samples,
-#         loc=loc,
-#         scale_tril=scale_tril,
-#     )
-#     assert samples.shape == (n_samples, 2, d_z)
-#     for b in range(2):
-#         cur_samples = samples[:, b, :]
-#         empirical_mean = tf.reduce_mean(cur_samples, axis=0)
-#         empirical_cov = tfp.stats.covariance(cur_samples)
-#         assert tf.experimental.numpy.allclose(
-#             empirical_mean, loc[b], atol=0.01, rtol=0.0
-#         )
-#         assert tf.experimental.numpy.allclose(
-#             empirical_cov, cov[b], atol=0.05, rtol=0.0
-#         )
+    ## (3) n_batch_dims = 2
+    # generate valid parameters
+    # set 1
+    log_w = tf.math.log(
+        tf.constant(
+            [
+                [
+                    [0.1, 0.3, 0.6],
+                    [0.1, 0.3, 0.6],
+                ],
+                [
+                    [0.1, 0.3, 0.6],
+                    [0.1, 0.3, 0.6],
+                ],
+            ]
+        )
+    )
+    loc = tf.constant(
+        [
+            [
+                [
+                    [3.0, 4.0],
+                    [-1.0, 2.0],
+                    [-7.0, -1.0],
+                ],
+                [
+                    [3.0, 4.0],
+                    [-1.0, 2.0],
+                    [-7.0, -1.0],
+                ],
+            ],
+            [
+                [
+                    [3.0, 4.0],
+                    [-1.0, 2.0],
+                    [-7.0, -1.0],
+                ],
+                [
+                    [3.0, 4.0],
+                    [-1.0, 2.0],
+                    [-7.0, -1.0],
+                ],
+            ],
+        ]
+    )
+    scale_tril = tf.constant(
+        [
+            [
+                [
+                    [
+                        [1.0, 0.0],
+                        [-0.5, 0.1],
+                    ],
+                    [
+                        [7.0, 0.0],
+                        [1.0, 7.0],
+                    ],
+                    [
+                        [0.2, 0.0],
+                        [-9.0, 9.0],
+                    ],
+                ],
+                [
+                    [
+                        [1.0, 0.0],
+                        [-0.5, 0.1],
+                    ],
+                    [
+                        [7.0, 0.0],
+                        [1.0, 7.0],
+                    ],
+                    [
+                        [0.2, 0.0],
+                        [-9.0, 9.0],
+                    ],
+                ],
+            ],
+            [
+                [
+                    [
+                        [1.0, 0.0],
+                        [-0.5, 0.1],
+                    ],
+                    [
+                        [7.0, 0.0],
+                        [1.0, 7.0],
+                    ],
+                    [
+                        [0.2, 0.0],
+                        [-9.0, 9.0],
+                    ],
+                ],
+                [
+                    [
+                        [1.0, 0.0],
+                        [-0.5, 0.1],
+                    ],
+                    [
+                        [7.0, 0.0],
+                        [1.0, 7.0],
+                    ],
+                    [
+                        [0.2, 0.0],
+                        [-9.0, 9.0],
+                    ],
+                ],
+            ],
+        ]
+    )
+    cov = scale_tril_to_cov(scale_tril)
+    prec = cov_to_prec(cov)
+    prec_tril = prec_to_prec_tril(prec)
+    # set 2
+    log_w2 = tf.math.log(
+        tf.constant(
+            [
+                [
+                    [0.5, 0.1, 0.4],
+                    [0.5, 0.1, 0.4],
+                ],
+                [
+                    [0.5, 0.1, 0.4],
+                    [0.5, 0.1, 0.4],
+                ],
+            ]
+        )
+    )
+    loc2 = tf.constant(
+        [
+            [
+                [
+                    [1.0, 4.0],
+                    [1.0, 2.0],
+                    [-5.0, -1.0],
+                ],
+                [
+                    [1.0, 4.0],
+                    [1.0, 2.0],
+                    [-5.0, -1.0],
+                ],
+            ],
+            [
+                [
+                    [1.0, 4.0],
+                    [1.0, 2.0],
+                    [-5.0, -1.0],
+                ],
+                [
+                    [1.0, 4.0],
+                    [1.0, 2.0],
+                    [-5.0, -1.0],
+                ],
+            ],
+        ]
+    )
+    scale_tril2 = tf.constant(
+        [
+            [
+                [
+                    [
+                        [2.0, 0.0],
+                        [-0.5, 1.1],
+                    ],
+                    [
+                        [1.0, 0.0],
+                        [2.0, 9.0],
+                    ],
+                    [
+                        [0.3, 0.0],
+                        [-9.0, 9.0],
+                    ],
+                ],
+                [
+                    [
+                        [2.0, 0.0],
+                        [-0.5, 1.1],
+                    ],
+                    [
+                        [1.0, 0.0],
+                        [2.0, 9.0],
+                    ],
+                    [
+                        [0.3, 0.0],
+                        [-9.0, 9.0],
+                    ],
+                ],
+            ],
+            [
+                [
+                    [
+                        [2.0, 0.0],
+                        [-0.5, 1.1],
+                    ],
+                    [
+                        [1.0, 0.0],
+                        [2.0, 9.0],
+                    ],
+                    [
+                        [0.3, 0.0],
+                        [-9.0, 9.0],
+                    ],
+                ],
+                [
+                    [
+                        [2.0, 0.0],
+                        [-0.5, 1.1],
+                    ],
+                    [
+                        [1.0, 0.0],
+                        [2.0, 9.0],
+                    ],
+                    [
+                        [0.3, 0.0],
+                        [-9.0, 9.0],
+                    ],
+                ],
+            ],
+        ]
+    )
+    cov2 = scale_tril_to_cov(scale_tril2)
+    prec2 = cov_to_prec(cov2)
+    prec_tril2 = prec_to_prec_tril(prec2)
+    assert tf.experimental.numpy.allclose(tf.linalg.cholesky(cov2), scale_tril2)
+    assert tf.experimental.numpy.allclose(tf.linalg.inv(cov2), prec2)
+    assert tf.experimental.numpy.allclose(tf.linalg.cholesky(prec2), prec_tril2)
+    # (i) Initialize with precision
+    gmm = GMM(log_w=log_w, loc=loc, prec=prec)
+    assert gmm.n_batch_dims == 2
+    assert gmm.n_components == 3
+    assert gmm.d_z == 2
+    assert tf.experimental.numpy.allclose(gmm.log_w, log_w)
+    assert tf.experimental.numpy.allclose(gmm.prec, prec)
+    assert tf.experimental.numpy.allclose(gmm.cov, cov)
+    assert tf.experimental.numpy.allclose(gmm.prec_tril, prec_tril)
+    assert tf.experimental.numpy.allclose(gmm.scale_tril, scale_tril)
+    # (ii) Set new parameters (prec)
+    gmm.log_w = log_w2
+    gmm.loc = loc2
+    gmm.prec = prec2
+    assert gmm.n_batch_dims == 2
+    assert gmm.n_components == 3
+    assert gmm.d_z == 2
+    assert tf.experimental.numpy.allclose(gmm.log_w, log_w2)
+    assert tf.experimental.numpy.allclose(gmm.prec, prec2)
+    assert tf.experimental.numpy.allclose(gmm.cov, cov2)
+    assert tf.experimental.numpy.allclose(gmm.prec_tril, prec_tril2)
+    assert tf.experimental.numpy.allclose(gmm.scale_tril, scale_tril2)
+    # (iii) Set new parameters (scale_tril)
+    gmm.log_w = log_w
+    gmm.loc = loc
+    gmm.scale_tril = scale_tril
+    assert gmm.n_batch_dims == 2
+    assert gmm.n_components == 3
+    assert gmm.d_z == 2
+    assert tf.experimental.numpy.allclose(gmm.log_w, log_w)
+    assert tf.experimental.numpy.allclose(gmm.prec, prec)
+    assert tf.experimental.numpy.allclose(gmm.cov, cov)
+    assert tf.experimental.numpy.allclose(gmm.prec_tril, prec_tril)
+    assert tf.experimental.numpy.allclose(gmm.scale_tril, scale_tril)
+    # (iv) Initialize with scale_tril
+    gmm = GMM(log_w=log_w, loc=loc, scale_tril=scale_tril)
+    assert gmm.n_batch_dims == 2
+    assert gmm.n_components == 3
+    assert gmm.d_z == 2
+    assert tf.experimental.numpy.allclose(gmm.log_w, log_w)
+    assert tf.experimental.numpy.allclose(gmm.prec, prec)
+    assert tf.experimental.numpy.allclose(gmm.cov, cov)
+    assert tf.experimental.numpy.allclose(gmm.prec_tril, prec_tril)
+    assert tf.experimental.numpy.allclose(gmm.scale_tril, scale_tril)
+    # (v) call all methods (validity of results is confirmed by the other tests)
+    z = tf.random.normal((10, 2, 2, 2))
+    s = gmm.sample(n_samples=10)
+    assert s.shape == (10, 2, 2, 2)
+    ld, ldg, ldh = gmm.log_density(z=z, compute_grad=True, compute_hess=True)
+    assert ld.shape == (10, 2, 2)
+    assert ldg.shape == (10, 2, 2, 2)
+    assert ldh.shape == (10, 2, 2, 2, 2)
+    lcd = gmm.log_component_densities(z=z)
+    assert lcd.shape == (10, 2, 2, 3)
+    lr = gmm.log_responsibilities(z=z)
+    assert lr.shape == (10, 2, 2, 3)
+    s = gmm.sample_all_components(n_samples_per_component=10)
+    assert s.shape == (10, 2, 2, 3, 2)
