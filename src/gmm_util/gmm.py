@@ -112,13 +112,13 @@ class GMM:
 
     # TODO: check consistency of shapes
     # TODO: validate arguments
-    @loc.setter
-    def loc(self, value):
-        self._loc.assign(value)
-
     @log_w.setter
     def log_w(self, value):
         self._log_w.assign(value)
+
+    @loc.setter
+    def loc(self, value):
+        self._loc.assign(value)
 
     @prec.setter
     def prec(self, value):
